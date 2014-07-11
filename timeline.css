@@ -1,0 +1,12 @@
+
+
+.minorPoint {
+	opacity:0.1;
+}
+
+.minorPoint:hover {
+	opacity:0.8;
+}	
+
+.majorPoint {
+}
