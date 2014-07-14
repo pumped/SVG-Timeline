@@ -1,71 +1,3 @@
-var jsonCircles = [
-{
-  "x_axis": 30,
-  "y_axis": 30,
-  "radius": 20,
-  "color" : "green"
- }, {
-  "x_axis": 70,
-  "y_axis": 70,
-  "radius": 20,
-  "color" : "purple"
- }, {
-  "x_axis": 110,
-  "y_axis": 100,
-  "radius": 20,
-  "color" : "red"
-}];
-
-var timelines = [{
-	startTime:'0',
-	endTime:'30',
-	ID:'1',
-	children:[{
-			startTime:'5',
-			endTime:'35',
-			ID:'1.1',
-			children:[{
-				startTime:'5',
-				endTime:'35',
-				ID:'1.1.1',
-				children:[]
-			}]
-		},{
-			startTime:'1',
-			endTime:'32',
-			ID:'1.2',
-			children:[]
-		},{
-			startTime:'0',
-			endTime:'30',
-			ID:'1.3',
-			children:[{
-				startTime:'20',
-				endTime:'25',
-				ID:'1.3.1',
-				children:[]
-			},{
-				startTime:'4',
-				endTime:'28',
-				ID:'1.3.2',
-				children:[{
-					startTime:'8',
-					endTime:'28',
-					ID:'1.3.2.1',
-					children:[{
-						startTime:'12',
-						endTime:'28',
-						ID:'1.3.2.1.1',
-						children:[]
-					}]
-				}]
-			}]
-		}]
-}];
-
-
-
-
 function Timeline (data) {
 	this.data = data;
 
@@ -82,6 +14,7 @@ function Timeline (data) {
 		stepWidth:40,
 		pointSize:8,
 		topBorder: 30,
+		leftBorder:0,
 
 		grid: {
 			lineWidth:0.5,
@@ -114,11 +47,12 @@ function encode_as_img_and_link(){
 }
 
 Timeline.prototype.drawTimeline = function(element) {
-	/*var width = this._latestTime();
-	console.log("Width: " + width);*/
+	this.range = [this.data[0].startTime,this._latestTime(this.data)];
+	this.rows = this._rowCount(this.data);
 	this.steps = 35;
-	this.height = 800;
-	this.draw = SVG(element).size(1500,this.height);
+	this.height = (this.rows * (this.config.elementHeight + this.config.rowSpacing*2)) + this.config.topBorder;
+	this.width = ((this.range[1]-this.range[0]+1)*(this.config.stepWidth))+this.config.leftBorder;
+	this.draw = SVG(element).size(this.width,this.height);
 
 
 	this.chart = this.draw.group();
@@ -131,16 +65,31 @@ Timeline.prototype.drawTimeline = function(element) {
 };
 
 Timeline.prototype._latestTime = function(data) {
-	var latest = 0;
-	for (i in this.data) {
-		if (this.data[i].children.length) {
-			latest = this._latestTime(this.data[i].children);
+	var largest = 0;
+	for (var i in data) {
+		if (data[i].children.length) {
+			var c = this._latestTime(data[i].children);
+			if (c>largest) {
+				largest = c;
+			}
 		}
-		if (this.data[i].endTime > latest) {
-			return this.data[i].endTime;
+		if (data[i].endTime > largest) {
+			largest = data[i].endTime;
 		}
 	}
+	return largest;
 };
+
+Timeline.prototype._rowCount = function(data) {
+	var count = 0;
+	for (var i in data) {
+		count++;
+		if (data[i].children.length) {
+			count += this._rowCount(data[i].children);
+		}
+	}
+	return count;
+}
 
 Timeline.prototype.drawBase = function() {
 	var underlay = this.plotGroup.group();
@@ -157,13 +106,14 @@ Timeline.prototype.drawBase = function() {
 	var xSkip = 0.5*this.config.elementWidth;
 
 	for (i=0; i<=this.steps; i++) {
-		var x = xSkip + (i*this.config.stepWidth);
+		var x = xSkip + (i*this.config.stepWidth) + this.config.leftBorder;
 		
 		//draw columns
-		var column = underlay.rect(this.config.stepWidth,y2-y)
+		/*var column = underlay.rect(this.config.stepWidth,y2-y)
 			column.move(x - (0.5*this.config.stepWidth),y);
 			column.fill('#fff');
 			column.attr('class','rowHover');
+		*/
 
 		//draw year lines
 		var line = underlay.line(x,y,x,y2);
@@ -205,8 +155,7 @@ Timeline.prototype.processTimeline  = function(tData,parent) {
 		
 		//workout element coordinates
 		this.c.currentRow++;
-		console.log('Drawing ' + t.ID + ' at ' + this.c.currentRow);
-		var x = (t.startTime * this.config.stepWidth);
+		var x = (t.startTime * this.config.stepWidth) + this.config.leftBorder;
 		var y = ((this.config.elementHeight + this.config.rowSpacing) * this.c.currentRow);
 		t.x = x;
 		t.y = y;
@@ -231,27 +180,42 @@ Timeline.prototype.processTimeline  = function(tData,parent) {
 			this.processTimeline(t.children,t);
 		}
 
-		//draw points on timeline last to be above everything else
-		for(i=0;i <= (t.endTime - t.startTime); i++) {
-			var circle = group.circle(this.config.pointSize);
-			circle.move(x+(0.5*this.config.elementWidth)+(i*this.config.stepWidth)-(0.5*this.config.pointSize),tY-(0.5*this.config.pointSize));
-			circle.fill('#fff');
-			circle.stroke({color: '#000', width: this.config.lineWidth});
-
-			if ((i+parseInt(t.startTime))%this.config.grid.majorLineInterval != 0) {
-				circle.attr('class','minorPoint');
-			} else {
-				circle.attr('class','majorPoint');
-			}
-		}
-
 		//draw element last to be on top
-		var rect = group.rect(this.config.elementHeight, this.config.elementWidth).move(x,y);
+		var rect = group.rect(this.config.elementWidth, this.config.elementHeight).move(x,y);
+
+		//draw points on timeline last to be above lines
+		for(i=0;i <= (t.endTime - t.startTime); i++) {
+			//draw link target
+			var link = group.link('#tl'+this.getDate(t,i)+t.ID);
+			link.attr('class','clickTarget');
+			link.attr('title', this.getDate(t,i));
+			var target = link.rect(this.config.stepWidth,this.config.elementHeight);
+			var tarX = x + (i*this.config.stepWidth) + (0.5*this.config.elementWidth)-(0.5*this.config.stepWidth);
+			var tarY = tY - (0.5*this.config.elementHeight);
+			target.move(tarX,tarY);
+			target.fill('#eee');
+			//target.attr('class','clickTarget');			
+
+			if (i !=0 ) {
+				var circle = link.circle(this.config.pointSize);
+				var cx = x+(0.5*this.config.elementWidth)+(i*this.config.stepWidth)-(0.5*this.config.pointSize);
+				var cy = tY-(0.5*this.config.pointSize);
+				circle.move(cx,cy);
+				circle.fill('#fff');
+				circle.stroke({color: '#000', width: this.config.lineWidth});
+
+				if ((i+parseInt(t.startTime))%this.config.grid.majorLineInterval != 0) {
+					circle.attr('class','minorPoint');
+				} else {
+					circle.attr('class','majorPoint');
+				}
+			}			
+		}
 	}
 };
 
+Timeline.prototype.getDate = function(data, i) {
+	return this.config.startDate + i + parseInt(data.startTime);
+}
 
-var t = new Timeline(timelines);
-t.drawTimeline("timeline");
-encode_as_img_and_link();
 

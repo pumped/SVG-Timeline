@@ -4,9 +4,31 @@
 	opacity:0.1;
 }
 
-.minorPoint:hover {
-	opacity:0.8;
+.minorPoint:hover, .clickTarget:hover .minorPoint, .clickTarget:hover .majorPoint {
+	opacity:1;
+	fill:#333;
 }	
 
 .majorPoint {
+}
+
+/*rect, line, circle {
+	pointer-events:none;
+}*/
+
+.rowHover {
+	pointer-events:auto;
+}
+
+.rowHover:hover {
+	fill:#eee;
+}
+
+.clickTarget {
+	/*opacity:0;*/
+	pointer-events:all;
+}
+
+.clickTarget rect {
+	opacity:0;
 }
