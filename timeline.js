@@ -1,13 +1,15 @@
 function Timeline (data) {
 	this.data = data;
-	this.idx = {"points":{}, "rows":{}};
+	this.idx = {"points":{}, "rows":{}, "clickTargets":{}};
+	this.minimised = false;
+	this.minamisable = true;
 
 	this.c = {
 		currentRow:0
 	};
 
 	this.config = {
-		startDate: 2014,
+		startDate: 2015,
 		elementHeight: 50,
 		elementWidth: 50,
 		lineWidth: 1,
@@ -22,6 +24,8 @@ function Timeline (data) {
 		},
 		topBorder: 30,
 		leftBorder:0,
+
+		minimiseHeight:200,
 
 		grid: {
 			lineWidth:0.5,
@@ -43,6 +47,8 @@ function Timeline (data) {
 			}
 		},
 	};
+
+	this.setupPlayback();
 }
 
 function encode_as_img_and_link(){
@@ -54,12 +60,15 @@ function encode_as_img_and_link(){
 }
 
 Timeline.prototype.drawTimeline = function(element) {
+	this.element = element;
 	this.range = [this.data[0].startTime,this._latestTime(this.data)];
 	this.rows = this._rowCount(this.data);
 	this.steps = 35;
-	this.height = (this.rows * (this.config.elementHeight + this.config.rowSpacing*2)) + this.config.topBorder + 100;
+	this.height = (this.rows * (this.config.elementHeight + this.config.rowSpacing*2)) + this.config.topBorder + 50;
 	this.width = ((this.range[1]-this.range[0]+1)*(this.config.stepWidth))+this.config.leftBorder;
+	this.minHeight = (this.config.elementHeight + this.config.rowSpacing*2);
 	this.draw = SVG(element).size(this.width,this.height);
+	this.draw.viewbox(0,0,this.width,this.height);
 
 
 	this.chart = this.draw.group();
@@ -71,6 +80,8 @@ Timeline.prototype.drawTimeline = function(element) {
 	
 	this.drawBase();
 	this.processTimeline(this.data);
+
+	//this.clickBind();
 };
 
 Timeline.prototype._latestTime = function(data) {
@@ -93,9 +104,11 @@ Timeline.prototype.minMaxValue = function(data) {
 	
 	//for array
 	arr = data.invStats;
+	//console.log(arr);
 	var min = Math.min.apply(null, arr);
     var max = Math.max.apply(null, arr);
-    //console.log("ID: "+data.ID+", Max: " + max);
+    ///console.log("ID: "+data.ID+", Max: " + max);
+   // console.log("ID: "+data.ID+", Min: " + min);
     //console.log(arr);
     var mm = [min,max];
 
@@ -168,28 +181,47 @@ Timeline.prototype.drawBase = function() {
 	//draw shading
 }
 
-Timeline.prototype.clickBind = function(callback) {
-	this.callback = callback;
-	var that = this;
-	$('.clickTarget').click(function() {
-		that.selectLineage(this);
+Timeline.prototype.nodeClick = function(evt) {
+	var bbox = evt.bbox();
+	this.minimise(bbox);
+	this.selectLineage(evt);
+}
+
+Timeline.prototype.maximise = function() {
+	if (this.minimised) {
+		this.draw.animate(500, elastic).viewbox(0,0,this.width,this.height).size(this.width,this.height);
+		this.minimised = false;
+	}
+}
+
+Timeline.prototype.minimise = function(bbox) {
+	//if it's already minimised, it's not a minimise action
+	if (this.minimised)
 		return false;
-	});
+
+	console.log("minimising");
+
+	//the top of the bounding box clicked is the top of our viewbox
+	var top = bbox.y + 20;
+
+	//animate viewbox and viewport simutaneously
+	this.draw.animate(500, elastic).viewbox(0,top,this.width,this.minHeight).size(this.width,this.minHeight);
+	this.minimised = true;
 }
 
 Timeline.prototype.selectLineage = function(target) {
-	dateID = $(target).attr('href').replace("#tl",'').split('-');
-	date = dateID[0];
-	id = dateID [1];
-	console.log(id);
-	this.callback(id, date);
+	dateID = target.attr('href').replace("#tl",'').split('-');
+	date = dateID[0]-this.config.startDate;
+	id = dateID [1]; 
+
+	this.setTimeline(id);
+	this.setTime(date);
 }
 
 
 Timeline.prototype.processTimeline  = function(tData,parent) {
 	//sort	
 
-	//draw
 	for (i in tData) {
 		var t = tData[i];
 
@@ -231,7 +263,16 @@ Timeline.prototype.processTimeline  = function(tData,parent) {
 		}
 		
 		//draw element last to be on top
-		var rect = group.rect(this.config.elementWidth, this.config.elementHeight).move(x,y);
+		
+		//draw pie
+		var pieGroup = group.group();
+		pieGroup.attr("class","pieGroup");
+		
+		this.drawPie(pieGroup,t);
+		pieGroup.move(x,y);
+		
+		
+
 
 		//draw points on timeline last to be above lines
 		for(i=0;i <= (t.endTime - t.startTime); i++) {
@@ -243,7 +284,12 @@ Timeline.prototype.processTimeline  = function(tData,parent) {
 			var link = group.link('#tl'+this.getDate(t,i)+'-'+t.ID);
 			link.attr('class','clickTarget');
 			link.attr('title', this.getDate(t,i));
-			link.attr('id', this.makeID(t.ID,i));
+			lnkID = this.makeID(t.ID,i);
+			link.attr('id',lnkID);
+			var controller = this;
+			link.click(function(){
+				controller.nodeClick.apply(controller,[this]);
+			});
 			var target = link.rect(this.config.stepWidth,this.config.elementHeight);
 			var tarX = x + (i*this.config.stepWidth) + (0.5*this.config.elementWidth)-(0.5*this.config.stepWidth);
 			var tarY = tY - (0.5*this.config.elementHeight);
@@ -277,7 +323,7 @@ Timeline.prototype.processTimeline  = function(tData,parent) {
 				} else {
 					circle.fill(this.config.points.defaultColor);
 				}
-				circle.stroke({color: '#000', width: this.config.lineWidth});
+				//circle.stroke({color: '#000', width: this.config.lineWidth});
 
 				var pointl = (pointLoaded == true ? " loaded":"");
 				if ((i+parseInt(t.startTime))%this.config.grid.majorLineInterval != 0) {
@@ -290,6 +336,15 @@ Timeline.prototype.processTimeline  = function(tData,parent) {
 	}
 };
 
+Timeline.prototype.drawPie = function(group, data) {
+	console.log(data);
+	if (data.hasOwnProperty("divisions")) {
+		//do something
+	} else {
+		var rect = group.rect(this.config.elementWidth, this.config.elementHeight);
+	}
+}
+
 Timeline.prototype.setLoaded = function(timeline,id,value) {
 	
 	//add to data
@@ -300,7 +355,7 @@ Timeline.prototype.setLoaded = function(timeline,id,value) {
 	//get point element
 	var point = this.idx.points[timeline][id];
 	
-	//fade colour
+	//set colour
 	point.attr({ "fill": this.config.points.loadedColor});
 	
 	//rescale row
@@ -315,7 +370,7 @@ Timeline.prototype.setLoaded = function(timeline,id,value) {
 Timeline.prototype._rescaleData = function() {
 	//update min max
 	newMM = this.minMaxValue(this.data[0]);
-	console.log(newMM);
+	//console.log(newMM);
 
 	//update scale or not
 	if (newMM[0] != this.mm[0] || newMM[1] != this.mm[1]) {
@@ -323,16 +378,16 @@ Timeline.prototype._rescaleData = function() {
 
 		//update each row
 		for (id in this.idx.rows) {
-			console.log(id);
-			console.log(this.fetchTimeline(id));
+			//console.log(id);
+			//console.log(this.fetchTimeline(id));
 			this._rowRescale(id, this.fetchTimeline(id).invStats,true);
 		}
 
-		console.log('rescaled everything');
+		//console.log('rescaled everything');
 		return true;
 	}
 
-	console.log('no rescale needed');
+	//console.log('no rescale needed');
 	return false;
 }
 
@@ -346,25 +401,32 @@ Timeline.prototype._rowRescale = function(id, data, animate) {
 
 	//adjust nodes
 	nodes = this.idx.points[id];
-	console.log(data);
+	//console.log(data);
 	for(i in nodes) {
 		size = this._scaleValue(this.config.points,minmax,data[i]);
-		nodes[i].animate(1000, '>', 0).size(size,size);
+		if (size != null) {
+			nodes[i].animate(1000, elastic).size(size,size);
+		}
 	}
 }
 
 Timeline.prototype._scaleValue = function(range,minmax,value) {
 	var size = range.min + (((value-minmax.min) / (minmax.max-minmax.min)) * (range.max - range.min));
 	if (!size) {
-		console.log("-------");
+		/*console.log("-------");
 		console.log(range);
 		console.log(minmax);
 		console.log(value);
-		console.log("-------");
+		console.log("-------");*/
+		return null;
 	}
 
 	return size;
 }
+ function elastic(pos) {
+    if (pos == !!pos) return pos
+    	return Math.pow(2, -10 * pos) * Math.sin((pos - 0.075) * (2 * Math.PI) / .3) + 1;
+  }
 
 Timeline.prototype._setInvasiveValue = function(elem,id,value) {
 	if (!elem.hasOwnProperty("invStats")) {
@@ -372,8 +434,12 @@ Timeline.prototype._setInvasiveValue = function(elem,id,value) {
 		for (i=0; i<elem.endTime-elem.startTime; i++) {
 			elem.invStats.push(0);
 		}
+	} else if(elem.invStats.length == 0) {
+		for (i=0; i<elem.endTime-elem.startTime; i++) {
+			elem.invStats.push(0);
+		}
 	}
-	console.log(elem);
+	//console.log(elem);
 	elem.invStats[parseInt(id)] = value;
 }
 
@@ -412,3 +478,119 @@ Timeline.prototype.getDate = function(data, i) {
 }
 
 
+
+Playback = function() {
+	this.currentYear = 0;
+	this.startYear = 0;
+	this.endYear = 30;
+	this.playbackSpeed = 200;
+	this.loop = true;
+
+	this.playing = false;
+
+	this.callbacks;
+}
+
+Playback.prototype.stop = function() {
+	this.playing = false;
+}
+
+Playback.prototype.play = function() {
+	this.playing = true;
+
+	if (this.currentYear >= this.endYear) {
+		this.setYear(0);
+		var that = this;
+		setTimeout(function(){that.playback()},this.playbackSpeed);
+	} else {
+		this.playback();	
+	}
+}
+
+Playback.prototype.playback = function() {
+	if (this.playing) {
+
+		console.log(this.currentYear);
+		
+		if (this.currentYear+1 <= this.endYear) {
+			this.setTime(this.currentYear+1);
+
+			var that = this;
+			setTimeout(function(){that.playback()},this.playbackSpeed);
+		} else {
+			if (this.loop) {
+				this.currentYear = this.startYear;
+				this.setTime(this.currentYear);
+
+				var that = this;
+				setTimeout(function(){that.playback()},this.playbackSpeed);
+			} else {
+			    this.stop();
+			}
+		}
+	}
+}
+
+Playback.prototype.setTime = function(val) {
+	this.currentYear = val;
+}
+
+
+
+Timeline.prototype.setupPlayback = function() {
+	this.time = null;
+	this.timelineID = null;
+	this.playCallbacks = {timeChange:[],timelineChange:[]};
+	this.playback = new Playback();
+}
+
+///Playback component
+Timeline.prototype.play = function() {
+	this.playback.play();
+}
+
+Timeline.prototype.stop = function() {
+	this.playback.stop();
+}
+
+Timeline.prototype.setTimeline = function(id) {
+	this.timelineID = id;
+	this._onTimelineChange(id);
+}
+
+Timeline.prototype.setTime = function(time) {
+	this.time = time;
+	this._onTimeChange(this.timelineID,time);
+
+	//set time
+
+}
+
+//client side bind to time change
+Timeline.prototype.onTimeChange = function(callback) {
+	this.addCallbacks(this.playCallbacks,"timeChange",callback);
+}
+
+Timeline.prototype.onTimelineChange = function(callback) {
+	this.addCallbacks(this.playCallbacks,"timelineChange",callback);
+}
+
+
+Timeline.prototype._onTimeChange = function(timelineID,time) {
+	this.runCallbacks(this.playCallbacks,"timeChange",this,[timelineID,time]);
+}
+
+Timeline.prototype._onTimelineChange = function(timelineID) {
+	this.runCallbacks(this.playCallbacks,"timelineChange",this,[timelineID]);
+}
+
+
+Timeline.prototype.addCallbacks = function(callbackDictionary,key,callback) {
+	callbackDictionary.key.push(callback);
+}
+
+Timeline.prototype.runCallbacks = function(callbackDictionary, key, context, args) {
+	for (i in callbackDictionary[key]) {
+		callbackDictionary[key][i].apply(context,args);
+	}
+}
