@@ -9,7 +9,7 @@ function Timeline (data) {
 	};
 
 	this.config = {
-		startDate: 2015,
+		startDate: 0,
 		elementHeight: 50,
 		elementWidth: 50,
 		lineWidth: 1,
@@ -47,6 +47,8 @@ function Timeline (data) {
 			}
 		},
 	};
+
+	this.callbacks = {timeChange:[],timelineChange:[],dataChange:[]};
 
 	this.setupPlayback();
 }
@@ -337,7 +339,7 @@ Timeline.prototype.processTimeline  = function(tData,parent) {
 };
 
 Timeline.prototype.drawPie = function(group, data) {
-	console.log(data);
+	//console.log(data);
 	if (data.hasOwnProperty("divisions")) {
 		//do something
 	} else {
@@ -365,6 +367,9 @@ Timeline.prototype.setLoaded = function(timeline,id,value) {
 
 	//add loaded class
 	point.attr('class',point.attr('class') + ' loaded');
+
+	//run callback
+	this._onDataChange(timeline,id);
 }
 
 Timeline.prototype._rescaleData = function() {
@@ -431,11 +436,11 @@ Timeline.prototype._scaleValue = function(range,minmax,value) {
 Timeline.prototype._setInvasiveValue = function(elem,id,value) {
 	if (!elem.hasOwnProperty("invStats")) {
 		elem.invStats = [];
-		for (i=0; i<elem.endTime-elem.startTime; i++) {
+		for (i=0; i<=elem.endTime-elem.startTime; i++) {
 			elem.invStats.push(0);
 		}
 	} else if(elem.invStats.length == 0) {
-		for (i=0; i<elem.endTime-elem.startTime; i++) {
+		for (i=0; i<=elem.endTime-elem.startTime; i++) {
 			elem.invStats.push(0);
 		}
 	}
@@ -540,7 +545,6 @@ Playback.prototype.setTime = function(val) {
 Timeline.prototype.setupPlayback = function() {
 	this.time = null;
 	this.timelineID = null;
-	this.playCallbacks = {timeChange:[],timelineChange:[]};
 	this.playback = new Playback();
 }
 
@@ -568,25 +572,35 @@ Timeline.prototype.setTime = function(time) {
 
 //client side bind to time change
 Timeline.prototype.onTimeChange = function(callback) {
-	this.addCallbacks(this.playCallbacks,"timeChange",callback);
+	this.addCallbacks(this.callbacks,"timeChange",callback);
 }
 
 Timeline.prototype.onTimelineChange = function(callback) {
-	this.addCallbacks(this.playCallbacks,"timelineChange",callback);
+	this.addCallbacks(this.callbacks,"timelineChange",callback);
 }
 
+Timeline.prototype.onDataChange = function(callback) {
+	this.addCallbacks(this.callbacks,"dataChange",callback);
+}
+
+Timeline.prototype._onDataChange = function(timelineID,time) {
+	this.runCallbacks(this.callbacks,"dataChange",this,[timelineID,time]);
+}
 
 Timeline.prototype._onTimeChange = function(timelineID,time) {
-	this.runCallbacks(this.playCallbacks,"timeChange",this,[timelineID,time]);
+	this.runCallbacks(this.callbacks,"timeChange",this,[timelineID,time]);
 }
 
 Timeline.prototype._onTimelineChange = function(timelineID) {
-	this.runCallbacks(this.playCallbacks,"timelineChange",this,[timelineID]);
+	this.runCallbacks(this.callbacks,"timelineChange",this,[timelineID]);
 }
 
 
+
+
 Timeline.prototype.addCallbacks = function(callbackDictionary,key,callback) {
-	callbackDictionary.key.push(callback);
+	//console.log(callbackDictionary);
+	callbackDictionary[key].push(callback);
 }
 
 Timeline.prototype.runCallbacks = function(callbackDictionary, key, context, args) {
